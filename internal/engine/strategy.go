@@ -19,6 +19,8 @@ func NewCalculator(method string) (Calculator, error) {
 	switch method {
 	case "fifo":
 		return &FIFOCalculator{}, nil
+	case "average":
+		return &AverageCalculator{}, nil
 	default:
 		return nil, fmt.Errorf("unknown cost basis method: %q", method)
 	}
