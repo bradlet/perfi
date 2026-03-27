@@ -6,6 +6,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// DecimalFromString parses a decimal string, for use by storage and parsing layers.
+func DecimalFromString(s string) (decimal.Decimal, error) {
+	return decimal.NewFromString(s)
+}
+
 // Transaction represents a single buy or sell event for any asset type.
 // Quantity is positive for purchases and negative for sales.
 type Transaction struct {
