@@ -1,7 +1,7 @@
 package sheets
 
 import (
-	"github.com/bradlet/costbasis/internal/engine"
+	"github.com/bradlet/perfi/internal/engine"
 )
 
 // FormatSaleSummaries converts sale summaries into rows suitable for writing

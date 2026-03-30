@@ -25,7 +25,7 @@ type Config struct {
 // applying defaults for any unset values.
 func Load() (*Config, error) {
 	viper.SetDefault("method", "fifo")
-	viper.SetDefault("db_path", "./costbasis.db")
+	viper.SetDefault("db_path", "./perfi.db")
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

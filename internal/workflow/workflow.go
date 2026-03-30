@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bradlet/costbasis/internal/engine"
-	"github.com/bradlet/costbasis/internal/sheets"
-	"github.com/bradlet/costbasis/internal/storage"
+	"github.com/bradlet/perfi/internal/engine"
+	"github.com/bradlet/perfi/internal/sheets"
+	"github.com/bradlet/perfi/internal/storage"
 )
 
 // Runner orchestrates the full sync -> calc -> push pipeline.

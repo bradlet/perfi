@@ -1,6 +1,6 @@
 package main
 
-import "github.com/bradlet/costbasis/cmd"
+import "github.com/bradlet/perfi/cmd"
 
 func main() {
 	cmd.Execute()

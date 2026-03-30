@@ -1,10 +1,14 @@
-# costbasis
+# perfi-cli
 
-A Go CLI tool for tracking cost basis of financial assets using Google Sheets as the data source. Supports FIFO and average cost methods, multiple asset types, and persists data locally in SQLite.
+A Go CLI-based personal finance tracking and management tool. Currently solely used for tracking cost basis of financial assets using Google Sheets as the data source. Supports FIFO and average cost methods, multiple asset types, and persists data locally in SQLite.
+
+## Potential Features
+
+In the future, this CLI could help in more general personal finance tracking and tax preparation use-cases. It could bubble up reports and integrate with LLMs to offer unofficial financial management advice.
 
 ## Overview
 
-`costbasis` replaces manual spreadsheet-based cost basis tracking with a single CLI that:
+`perfi-cli` replaces manual spreadsheet-based cost basis tracking with a single CLI that:
 
 1. **Syncs** transaction data from a Google Sheet into a local SQLite database
 2. **Calculates** cost basis using FIFO or average cost methods
@@ -25,8 +29,8 @@ It's designed for personal tax reporting on crypto and other asset transactions.
 If you don't have a GCP project, create one:
 
 ```bash
-gcloud projects create my-costbasis --name="Cost Basis Tracker"
-gcloud config set project my-costbasis
+gcloud projects create my-perfi --name="Cost Basis Tracker"
+gcloud config set project my-perfi
 ```
 
 Or select an existing project:
@@ -49,7 +53,7 @@ gcloud services list --enabled | grep sheets
 
 ### 3. Set up Application Default Credentials
 
-Authenticate with the Sheets API scope so `costbasis` can read and write your spreadsheets:
+Authenticate with the Sheets API scope so `perfi` can read and write your spreadsheets:
 
 ```bash
 gcloud auth application-default login \
@@ -73,26 +77,26 @@ You'll need this for the configuration file.
 ### From source
 
 ```bash
-git clone https://github.com/bradlet/costbasis.git
-cd costbasis
-go build -o costbasis .
+git clone https://github.com/bradlet/perfci-cli.git
+cd perfi-cli
+go build -o perfi-cli .
 ```
 
 Optionally move the binary to your PATH:
 
 ```bash
-mv costbasis ~/go/bin/
+mv perfi ~/go/bin/
 ```
 
 ### Using `go install`
 
 ```bash
-go install github.com/bradlet/costbasis@latest
+go install github.com/bradlet/perfi-cli@latest
 ```
 
 ## Configuration
 
-Create a `.costbasis.yaml` file in your home directory or the directory where you run the CLI:
+Create a `.perfi.yaml` file in your home directory or the directory where you run the CLI:
 
 ```yaml
 # Google Sheet ID (from the URL)
@@ -105,7 +109,7 @@ default_asset: SOL
 method: fifo
 
 # SQLite database path
-db_path: "./costbasis.db"
+db_path: "./perfi.db"
 
 # Per-asset Google Sheets ranges
 assets:
@@ -119,7 +123,7 @@ assets:
     write_range: "ETH Cost Basis 2024!K1"
 ```
 
-All config values can be overridden via CLI flags or environment variables with the `COSTBASIS_` prefix (e.g., `COSTBASIS_SHEET_ID`).
+All config values can be overridden via CLI flags or environment variables with the `perfi_` prefix (e.g., `perfi_SHEET_ID`).
 
 ### Expected sheet format
 
@@ -141,39 +145,39 @@ Header rows are automatically detected and skipped.
 
 ```bash
 # Sync default asset
-costbasis sync
+perfi sync
 
 # Sync a specific asset
-costbasis sync --asset ETH
+perfi sync --asset ETH
 
 # Override the sheet range
-costbasis sync --range "My Sheet!A2:E500"
+perfi sync --range "My Sheet!A2:E500"
 ```
 
 ### Calculate cost basis
 
 ```bash
 # Calculate using the configured method (default: FIFO)
-costbasis calc
+perfi calc
 
 # Use average cost method
-costbasis calc --method average
+perfi calc --method average
 
 # Verbose output shows per-sale details
-costbasis calc --verbose
+perfi calc --verbose
 ```
 
 ### Push results to Google Sheet
 
 ```bash
 # Preview what would be written
-costbasis push --dry-run
+perfi push --dry-run
 
 # Write results to the configured range
-costbasis push
+perfi push
 
 # Override the target range
-costbasis push --range "Results!A1"
+perfi push --range "Results!A1"
 ```
 
 ### Combined workflow
@@ -182,20 +186,20 @@ Run sync, calc, and push in a single command:
 
 ```bash
 # Full pipeline
-costbasis run
+perfi run
 
 # Full pipeline with dry-run (doesn't write to sheet)
-costbasis run --dry-run
+perfi run --dry-run
 
 # Full pipeline for a specific asset and method
-costbasis run --asset ETH --method average
+perfi run --asset ETH --method average
 ```
 
 ### Global flags
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--config` | Config file path | `$HOME/.costbasis.yaml` |
+| `--config` | Config file path | `$HOME/.perfi.yaml` |
 | `--asset` | Asset type (e.g., SOL, ETH) | From config `default_asset` |
 | `--verbose` | Enable verbose output | `false` |
 
@@ -222,7 +226,7 @@ Both methods classify gains as **long-term** (held > 365 days) or **short-term**
 ### Project structure
 
 ```
-costbasis/
+perfi/
 ├── main.go                      # Entry point
 ├── cmd/                         # Cobra CLI commands
 │   ├── root.go                  # Root command + Viper config

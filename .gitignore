@@ -1,5 +1,5 @@
 # Binaries
-costbasis
+perfi
 *.exe
 *.exe~
 *.dll
@@ -26,6 +26,6 @@ go.work.sum
 .DS_Store
 
 # App
-costbasis.db
+perfi.db
 *.db
-.costbasis.yaml
+.perfi.yaml

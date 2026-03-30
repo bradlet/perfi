@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bradlet/costbasis/internal/engine"
+	"github.com/bradlet/perfi/internal/engine"
 	_ "modernc.org/sqlite"
 )
 

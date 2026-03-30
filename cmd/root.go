@@ -11,9 +11,9 @@ import (
 var cfgFile string
 
 var rootCmd = &cobra.Command{
-	Use:   "costbasis",
+	Use:   "perfi",
 	Short: "A CLI tool for tracking cost basis of financial assets",
-	Long: `costbasis is a personal financial tooling CLI that reads transaction data
+	Long: `perfi is a personal financial tooling CLI that reads transaction data
 from Google Sheets, calculates cost basis using various methods (FIFO, average cost),
 and writes results back to the sheet.
 
@@ -31,7 +31,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.costbasis.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.perfi.yaml)")
 	rootCmd.PersistentFlags().String("asset", "", "asset type to operate on (e.g. SOL, ETH)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "enable verbose logging")
 
@@ -49,10 +49,10 @@ func initConfig() {
 		viper.AddConfigPath(home)
 		viper.AddConfigPath(".")
 		viper.SetConfigType("yaml")
-		viper.SetConfigName(".costbasis")
+		viper.SetConfigName(".perfi")
 	}
 
-	viper.SetEnvPrefix("COSTBASIS")
+	viper.SetEnvPrefix("perfi")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {

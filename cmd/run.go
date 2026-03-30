@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bradlet/costbasis/internal/config"
-	"github.com/bradlet/costbasis/internal/sheets"
-	"github.com/bradlet/costbasis/internal/storage"
-	"github.com/bradlet/costbasis/internal/workflow"
+	"github.com/bradlet/perfi/internal/config"
+	"github.com/bradlet/perfi/internal/sheets"
+	"github.com/bradlet/perfi/internal/storage"
+	"github.com/bradlet/perfi/internal/workflow"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

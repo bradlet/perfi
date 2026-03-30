@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/bradlet/costbasis/internal/config"
-	"github.com/bradlet/costbasis/internal/engine"
-	"github.com/bradlet/costbasis/internal/storage"
+	"github.com/bradlet/perfi/internal/config"
+	"github.com/bradlet/perfi/internal/engine"
+	"github.com/bradlet/perfi/internal/storage"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -70,7 +70,7 @@ func runCalc(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(txns) == 0 {
-		return fmt.Errorf("no transactions found for asset %q — run 'costbasis sync' first", asset)
+		return fmt.Errorf("no transactions found for asset %q — run 'perfi sync' first", asset)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Calculating %s cost basis for %d %s transactions...\n",

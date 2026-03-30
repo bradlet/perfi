@@ -1,4 +1,4 @@
-module github.com/bradlet/costbasis
+module github.com/bradlet/perfi
 
 go 1.26.1
 

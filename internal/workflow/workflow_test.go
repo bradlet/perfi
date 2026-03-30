@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/bradlet/costbasis/internal/storage"
+	"github.com/bradlet/perfi/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
