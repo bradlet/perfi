@@ -12,7 +12,7 @@ import (
 
 var calcCmd = &cobra.Command{
 	Use:   "calc",
-	Short: "Run cost basis calculation on synced transaction data",
+	Short: "Run cost basis calculation on local transaction data",
 	Long: `Loads transactions from the local SQLite database and runs the
 specified cost basis calculation method (default: FIFO). Results are
 saved back to the database for later retrieval or pushing to a sheet.`,
@@ -70,7 +70,7 @@ func runCalc(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(txns) == 0 {
-		return fmt.Errorf("no transactions found for asset %q — run 'perfi sync' first", asset)
+		return fmt.Errorf("no transactions found for asset %q — run 'perfi pull' first", asset)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Calculating %s cost basis for %d %s transactions...\n",

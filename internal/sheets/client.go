@@ -12,6 +12,7 @@ import (
 type Client interface {
 	ReadRange(ctx context.Context, spreadsheetID, readRange string) ([][]interface{}, error)
 	WriteRange(ctx context.Context, spreadsheetID, writeRange string, values [][]interface{}) error
+	AppendRange(ctx context.Context, spreadsheetID, appendRange string, values [][]interface{}) error
 }
 
 // GoogleSheetsClient implements Client using the Google Sheets API v4.
@@ -51,6 +52,21 @@ func (c *GoogleSheetsClient) WriteRange(ctx context.Context, spreadsheetID, writ
 		Do()
 	if err != nil {
 		return fmt.Errorf("writing range %q: %w", writeRange, err)
+	}
+	return nil
+}
+
+func (c *GoogleSheetsClient) AppendRange(ctx context.Context, spreadsheetID, appendRange string, values [][]interface{}) error {
+	vr := &sheets.ValueRange{
+		Values: values,
+	}
+	_, err := c.service.Spreadsheets.Values.Append(spreadsheetID, appendRange, vr).
+		ValueInputOption("RAW").
+		InsertDataOption("INSERT_ROWS").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return fmt.Errorf("appending to range %q: %w", appendRange, err)
 	}
 	return nil
 }

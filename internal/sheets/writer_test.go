@@ -41,7 +41,7 @@ func TestFormatSaleSummaries(t *testing.T) {
 	assert.Equal(t, "Holding Period", rows[0][5])
 
 	// Check first data row
-	assert.Equal(t, "2024-06-01", rows[1][0])
+	assert.Equal(t, "06/01/2024", rows[1][0])
 	assert.Equal(t, "10.50000000", rows[1][1])
 	assert.Equal(t, "1575.00", rows[1][2])
 	assert.Equal(t, "1050.00", rows[1][3])
@@ -56,6 +56,45 @@ func TestFormatSaleSummaries(t *testing.T) {
 func TestFormatSaleSummaries_Empty(t *testing.T) {
 	rows := FormatSaleSummaries(nil)
 	require.Len(t, rows, 1) // header only
+}
+
+func TestFormatTransactionsForSheet(t *testing.T) {
+	txns := []engine.Transaction{
+		{
+			Source:       "Coinbase",
+			Date:         time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			Quantity:     decimal.RequireFromString("12.15"),
+			PricePerUnit: decimal.RequireFromString("82.25"),
+			TotalValue:   decimal.RequireFromString("1000.00"),
+		},
+		{
+			Source:       "manual",
+			Date:         time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+			Quantity:     decimal.RequireFromString("-5.0"),
+			PricePerUnit: decimal.RequireFromString("120.00"),
+			TotalValue:   decimal.RequireFromString("600.00"),
+		},
+	}
+
+	rows := FormatTransactionsForSheet(txns)
+	require.Len(t, rows, 2, "no header row expected")
+
+	// First row: buy
+	assert.Equal(t, "Coinbase", rows[0][0])
+	assert.Equal(t, "01/01/2024", rows[0][1])
+	assert.InDelta(t, 12.15, rows[0][2], 0.001)
+	assert.InDelta(t, 82.25, rows[0][3], 0.001)
+	assert.InDelta(t, 1000.0, rows[0][4], 0.001)
+
+	// Second row: sell (negative quantity)
+	assert.Equal(t, "manual", rows[1][0])
+	assert.Equal(t, "06/15/2024", rows[1][1])
+	assert.InDelta(t, -5.0, rows[1][2], 0.001)
+}
+
+func TestFormatTransactionsForSheet_Empty(t *testing.T) {
+	rows := FormatTransactionsForSheet(nil)
+	assert.Empty(t, rows)
 }
 
 func TestFormatLotConsumptions(t *testing.T) {

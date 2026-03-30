@@ -11,10 +11,12 @@ import (
 // mockClient implements the Client interface for testing command logic
 // without hitting the real Google Sheets API.
 type mockClient struct {
-	readData  [][]interface{}
-	readErr   error
-	writeErr  error
-	writeCalls []writeCall
+	readData    [][]interface{}
+	readErr     error
+	writeErr    error
+	appendErr   error
+	writeCalls  []writeCall
+	appendCalls []writeCall
 }
 
 type writeCall struct {
@@ -33,6 +35,11 @@ func (m *mockClient) ReadRange(_ context.Context, spreadsheetID, readRange strin
 func (m *mockClient) WriteRange(_ context.Context, spreadsheetID, writeRange string, values [][]interface{}) error {
 	m.writeCalls = append(m.writeCalls, writeCall{spreadsheetID, writeRange, values})
 	return m.writeErr
+}
+
+func (m *mockClient) AppendRange(_ context.Context, spreadsheetID, appendRange string, values [][]interface{}) error {
+	m.appendCalls = append(m.appendCalls, writeCall{spreadsheetID, appendRange, values})
+	return m.appendErr
 }
 
 func TestMockClient_ReadRange(t *testing.T) {

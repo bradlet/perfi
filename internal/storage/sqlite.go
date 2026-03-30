@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     price_per_unit TEXT NOT NULL,
     total_value    TEXT NOT NULL,
     synced_at      TEXT NOT NULL,
+    origin         TEXT NOT NULL DEFAULT 'sheet',
     UNIQUE(asset, source, date, quantity)
 );
 
@@ -52,7 +53,11 @@ CREATE TABLE IF NOT EXISTS calc_runs (
 type Store interface {
 	Init(ctx context.Context) error
 	UpsertTransactions(ctx context.Context, asset string, txns []engine.Transaction) error
+	InsertLocalTransaction(ctx context.Context, asset string, txn engine.Transaction) (int64, error)
 	GetTransactions(ctx context.Context, asset string) ([]engine.Transaction, error)
+	GetLocalTransactions(ctx context.Context, asset string) ([]engine.Transaction, error)
+	DeleteSheetTransactions(ctx context.Context, asset string) (int64, error)
+	MarkTransactionsSynced(ctx context.Context, ids []int64) error
 	SaveResults(ctx context.Context, result *engine.CostBasisResult) error
 	GetResults(ctx context.Context, asset string, method string) (*engine.CostBasisResult, error)
 	Close() error
@@ -94,12 +99,13 @@ func (s *SQLiteStore) UpsertTransactions(ctx context.Context, asset string, txns
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO transactions (asset, source, date, quantity, price_per_unit, total_value, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO transactions (asset, source, date, quantity, price_per_unit, total_value, synced_at, origin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'sheet')
 		ON CONFLICT(asset, source, date, quantity)
 		DO UPDATE SET price_per_unit=excluded.price_per_unit,
 		              total_value=excluded.total_value,
-		              synced_at=excluded.synced_at
+		              synced_at=excluded.synced_at,
+		              origin='sheet'
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing upsert: %w", err)
@@ -150,6 +156,86 @@ func (s *SQLiteStore) GetTransactions(ctx context.Context, asset string) ([]engi
 		txns = append(txns, t)
 	}
 	return txns, rows.Err()
+}
+
+func (s *SQLiteStore) InsertLocalTransaction(ctx context.Context, asset string, txn engine.Transaction) (int64, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO transactions (asset, source, date, quantity, price_per_unit, total_value, synced_at, origin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'local')
+	`,
+		asset,
+		txn.Source,
+		txn.Date.Format(time.RFC3339),
+		txn.Quantity.String(),
+		txn.PricePerUnit.String(),
+		txn.TotalValue.String(),
+		now,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("inserting local transaction: %w", err)
+	}
+	return result.LastInsertId()
+}
+
+func (s *SQLiteStore) GetLocalTransactions(ctx context.Context, asset string) ([]engine.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, asset, source, date, quantity, price_per_unit, total_value
+		FROM transactions
+		WHERE asset = ? AND origin = 'local'
+		ORDER BY date ASC, id ASC
+	`, asset)
+	if err != nil {
+		return nil, fmt.Errorf("querying local transactions: %w", err)
+	}
+	defer rows.Close()
+
+	var txns []engine.Transaction
+	for rows.Next() {
+		var r transactionRow
+		if err := rows.Scan(&r.ID, &r.Asset, &r.Source, &r.Date, &r.Quantity, &r.PricePerUnit, &r.TotalValue); err != nil {
+			return nil, fmt.Errorf("scanning local transaction: %w", err)
+		}
+		t, err := r.toTransaction()
+		if err != nil {
+			return nil, fmt.Errorf("converting local transaction row: %w", err)
+		}
+		txns = append(txns, t)
+	}
+	return txns, rows.Err()
+}
+
+func (s *SQLiteStore) DeleteSheetTransactions(ctx context.Context, asset string) (int64, error) {
+	result, err := s.db.ExecContext(ctx,
+		"DELETE FROM transactions WHERE asset = ? AND origin = 'sheet'", asset)
+	if err != nil {
+		return 0, fmt.Errorf("deleting sheet transactions: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+func (s *SQLiteStore) MarkTransactionsSynced(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `UPDATE transactions SET origin = 'sheet' WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("preparing update: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, id := range ids {
+		if _, err := stmt.ExecContext(ctx, id); err != nil {
+			return fmt.Errorf("marking transaction %d as synced: %w", id, err)
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) SaveResults(ctx context.Context, result *engine.CostBasisResult) error {

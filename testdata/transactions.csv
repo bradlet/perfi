@@ -1,0 +1,6 @@
+Source,Date,Quantity,PricePerUnit,TotalValue
+Coinbase,2024-01-01,10,100.00,1000.00
+Coinbase,2024-01-15,5,110.00,550.00
+Phantom,2024-02-01,8,120.00,960.00
+Coinbase,2024-03-01,-12,150.00,1800.00
+Coinbase,2024-06-15,-3,130.00,390.00

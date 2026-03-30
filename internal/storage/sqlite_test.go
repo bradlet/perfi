@@ -197,6 +197,164 @@ func TestSQLiteStore_SaveAndGetResults(t *testing.T) {
 	assert.True(t, d("287.875").Equal(loaded.Consumptions[0].CostBasis))
 }
 
+func TestSQLiteStore_InsertLocalTransaction(t *testing.T) {
+	store := setupStore(t)
+	ctx := context.Background()
+
+	txn := engine.Transaction{
+		Source:       "manual",
+		Date:         time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+		Quantity:     d("-5.0"),
+		PricePerUnit: d("120.00"),
+		TotalValue:   d("600.00"),
+	}
+
+	id, err := store.InsertLocalTransaction(ctx, "SOL", txn)
+	require.NoError(t, err)
+	assert.Positive(t, id)
+
+	// Should appear in GetTransactions.
+	all, err := store.GetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.True(t, d("-5.0").Equal(all[0].Quantity))
+
+	// Should appear in GetLocalTransactions.
+	local, err := store.GetLocalTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	require.Len(t, local, 1)
+	assert.Equal(t, id, local[0].ID)
+}
+
+func TestSQLiteStore_GetLocalTransactions_ExcludesSheetOrigin(t *testing.T) {
+	store := setupStore(t)
+	ctx := context.Background()
+
+	// Insert a sheet-origin transaction via UpsertTransactions.
+	sheetTxns := []engine.Transaction{{
+		Source: "Coinbase", Date: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Quantity: d("10"), PricePerUnit: d("100"), TotalValue: d("1000"),
+	}}
+	require.NoError(t, store.UpsertTransactions(ctx, "SOL", sheetTxns))
+
+	// Insert a local transaction.
+	localTxn := engine.Transaction{
+		Source: "manual", Date: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+		Quantity: d("-5"), PricePerUnit: d("120"), TotalValue: d("600"),
+	}
+	_, err := store.InsertLocalTransaction(ctx, "SOL", localTxn)
+	require.NoError(t, err)
+
+	// GetTransactions should return both.
+	all, err := store.GetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+
+	// GetLocalTransactions should return only the local one.
+	local, err := store.GetLocalTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	require.Len(t, local, 1)
+	assert.True(t, d("-5").Equal(local[0].Quantity))
+}
+
+func TestSQLiteStore_MarkTransactionsSynced(t *testing.T) {
+	store := setupStore(t)
+	ctx := context.Background()
+
+	txn := engine.Transaction{
+		Source: "manual", Date: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+		Quantity: d("-5"), PricePerUnit: d("120"), TotalValue: d("600"),
+	}
+	id, err := store.InsertLocalTransaction(ctx, "SOL", txn)
+	require.NoError(t, err)
+
+	// Mark as synced.
+	require.NoError(t, store.MarkTransactionsSynced(ctx, []int64{id}))
+
+	// Should no longer appear in GetLocalTransactions.
+	local, err := store.GetLocalTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Empty(t, local)
+
+	// Should still appear in GetTransactions.
+	all, err := store.GetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Len(t, all, 1)
+}
+
+func TestSQLiteStore_UpsertOverwritesLocalOrigin(t *testing.T) {
+	store := setupStore(t)
+	ctx := context.Background()
+
+	// Insert a local transaction.
+	txn := engine.Transaction{
+		Source: "manual", Date: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+		Quantity: d("-5"), PricePerUnit: d("120"), TotalValue: d("600"),
+	}
+	_, err := store.InsertLocalTransaction(ctx, "SOL", txn)
+	require.NoError(t, err)
+
+	// Upsert the same key via sheet sync — should overwrite origin to 'sheet'.
+	require.NoError(t, store.UpsertTransactions(ctx, "SOL", []engine.Transaction{txn}))
+
+	local, err := store.GetLocalTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Empty(t, local, "upsert from sheet should overwrite local origin")
+}
+
+func TestSQLiteStore_DeleteSheetTransactions(t *testing.T) {
+	store := setupStore(t)
+	ctx := context.Background()
+
+	// Insert sheet-origin transactions.
+	sheetTxns := sampleTransactions()
+	require.NoError(t, store.UpsertTransactions(ctx, "SOL", sheetTxns))
+
+	// Insert a local transaction.
+	localTxn := engine.Transaction{
+		Source: "manual", Date: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
+		Quantity: d("-5"), PricePerUnit: d("120"), TotalValue: d("600"),
+	}
+	_, err := store.InsertLocalTransaction(ctx, "SOL", localTxn)
+	require.NoError(t, err)
+
+	// Delete sheet transactions.
+	deleted, err := store.DeleteSheetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), deleted)
+
+	// Only the local transaction should remain.
+	all, err := store.GetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.True(t, d("-5").Equal(all[0].Quantity))
+}
+
+func TestSQLiteStore_DeleteSheetTransactions_OnlyAffectsAsset(t *testing.T) {
+	store := setupStore(t)
+	ctx := context.Background()
+
+	solTxns := []engine.Transaction{{
+		Source: "Coinbase", Date: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Quantity: d("10"), PricePerUnit: d("100"), TotalValue: d("1000"),
+	}}
+	ethTxns := []engine.Transaction{{
+		Source: "Coinbase", Date: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Quantity: d("5"), PricePerUnit: d("3000"), TotalValue: d("15000"),
+	}}
+	require.NoError(t, store.UpsertTransactions(ctx, "SOL", solTxns))
+	require.NoError(t, store.UpsertTransactions(ctx, "ETH", ethTxns))
+
+	deleted, err := store.DeleteSheetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), deleted)
+
+	// ETH should be untouched.
+	eth, err := store.GetTransactions(ctx, "ETH")
+	require.NoError(t, err)
+	assert.Len(t, eth, 1)
+}
+
 func TestSQLiteStore_SaveResults_ReplacesOld(t *testing.T) {
 	store := setupStore(t)
 	ctx := context.Background()

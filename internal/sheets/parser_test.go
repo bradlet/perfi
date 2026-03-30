@@ -81,6 +81,14 @@ func TestParseSheetRows(t *testing.T) {
 			wantLen: 1,
 		},
 		{
+			name: "MM/DD/YYYY date format (written back by perfi)",
+			rows: [][]interface{}{
+				{"manual", "01/01/2024", "-50", "80", "4000"},
+			},
+			asset:   "SOL",
+			wantLen: 1,
+		},
+		{
 			name: "too few columns",
 			rows: [][]interface{}{
 				{"Coinbase", 45292.0, 12.15},

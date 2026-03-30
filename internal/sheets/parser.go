@@ -38,17 +38,23 @@ func ParseSheetRows(rows [][]interface{}, asset string) ([]engine.Transaction, e
 			return nil, fmt.Errorf("row %d col A (source): %w", i+1, err)
 		}
 
-		// Skip header rows — if the date cell can't be parsed as a number, skip it.
+		// Skip header rows — if the date cell can't be parsed as a number or MM/DD/YYYY string, skip it.
 		dateStr, err := cellToString(row[1])
 		if err != nil {
 			return nil, fmt.Errorf("row %d col B (date): %w", i+1, err)
 		}
+		var date time.Time
 		dateVal, err := strconv.ParseFloat(strings.TrimSpace(dateStr), 64)
 		if err != nil {
-			// Likely a header row, skip.
-			continue
+			// Try MM/DD/YYYY format (used when transactions are written back by this tool).
+			date, err = time.Parse("01/02/2006", strings.TrimSpace(dateStr))
+			if err != nil {
+				// Likely a header row, skip.
+				continue
+			}
+		} else {
+			date = ExcelSerialToTime(dateVal)
 		}
-		date := ExcelSerialToTime(dateVal)
 
 		qty, err := cellToDecimal(row[2])
 		if err != nil {

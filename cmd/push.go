@@ -13,10 +13,11 @@ import (
 
 var pushCmd = &cobra.Command{
 	Use:   "push",
-	Short: "Write calculation results back to Google Sheet",
-	Long: `Reads the latest cost basis results from the local SQLite database
-and writes them to the configured Google Sheet range. Use --dry-run
-to preview what would be written without making changes.`,
+	Short: "Write local transactions and calculation results to Google Sheet",
+	Long: `Appends any locally-recorded transactions (from 'perfi sell') to the
+transaction log in the Google Sheet, then writes the latest cost basis
+results to the configured output range. Use --dry-run to preview what
+would be written without making changes.`,
 	RunE: runPush,
 }
 
@@ -57,6 +58,8 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no write range configured for asset %q", asset)
 	}
 
+	readRange := assetCfg.ReadRange
+
 	sheetID := cfg.SheetID
 	if sheetID == "" {
 		return fmt.Errorf("no sheet_id configured")
@@ -77,14 +80,33 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("initializing database: %w", err)
 	}
 
-	// Load transactions and re-run calculation to get full summaries with dates/proceeds.
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	// Append local transactions to the sheet.
+	localTxns, err := store.GetLocalTransactions(ctx, asset)
+	if err != nil {
+		return fmt.Errorf("getting local transactions: %w", err)
+	}
+
+	hasLocalTxns := len(localTxns) > 0
+	if hasLocalTxns {
+		if readRange == "" {
+			return fmt.Errorf("no read range configured for asset %q — needed to append local transactions", asset)
+		}
+
+		if dryRun {
+			fmt.Fprintf(cmd.OutOrStdout(), "Dry run — would append %d local transactions to %s.\n", len(localTxns), readRange)
+		}
+	}
+
+	// Load transactions and re-run calculation to get full summaries.
 	txns, err := store.GetTransactions(ctx, asset)
 	if err != nil {
 		return fmt.Errorf("loading transactions: %w", err)
 	}
 
 	if len(txns) == 0 {
-		return fmt.Errorf("no transactions found for asset %q — run 'perfi sync' first", asset)
+		return fmt.Errorf("no transactions found for asset %q — run 'perfi pull' first", asset)
 	}
 
 	calculator, err := engine.NewCalculator(method)
@@ -97,18 +119,19 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("calculating for output: %w", err)
 	}
 
-	if len(result.SaleSummaries) == 0 {
+	if len(result.SaleSummaries) == 0 && !hasLocalTxns {
 		fmt.Fprintf(cmd.OutOrStdout(), "No sales found — nothing to push.\n")
 		return nil
 	}
 
 	rows := sheets.FormatSaleSummaries(result.SaleSummaries)
 
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if dryRun {
-		fmt.Fprintf(cmd.OutOrStdout(), "Dry run — would write %d rows to %s:\n", len(rows), writeRange)
-		for _, row := range rows {
-			fmt.Fprintf(cmd.OutOrStdout(), "  %v\n", row)
+		if len(result.SaleSummaries) > 0 {
+			fmt.Fprintf(cmd.OutOrStdout(), "Dry run — would write %d rows to %s:\n", len(rows), writeRange)
+			for _, row := range rows {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %v\n", row)
+			}
 		}
 		return nil
 	}
@@ -118,10 +141,32 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating sheets client: %w", err)
 	}
 
-	if err := client.WriteRange(ctx, sheetID, writeRange, rows); err != nil {
-		return fmt.Errorf("writing to sheet: %w", err)
+	// Write local transactions first.
+	if hasLocalTxns {
+		appendRows := sheets.FormatTransactionsForSheet(localTxns)
+		if err := client.AppendRange(ctx, sheetID, readRange, appendRows); err != nil {
+			return fmt.Errorf("appending local transactions to sheet: %w", err)
+		}
+
+		ids := make([]int64, len(localTxns))
+		for i, t := range localTxns {
+			ids[i] = t.ID
+		}
+		if err := store.MarkTransactionsSynced(ctx, ids); err != nil {
+			return fmt.Errorf("marking transactions as synced: %w", err)
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "Appended %d local transactions to sheet.\n", len(localTxns))
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Pushed %d sale summaries to sheet.\n", len(result.SaleSummaries))
+	// Write sale results.
+	if len(result.SaleSummaries) > 0 {
+		if err := client.WriteRange(ctx, sheetID, writeRange, rows); err != nil {
+			return fmt.Errorf("writing to sheet: %w", err)
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "Pushed %d sale summaries to sheet.\n", len(result.SaleSummaries))
+	}
+
 	return nil
 }

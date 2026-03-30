@@ -10,7 +10,7 @@ import (
 	"github.com/bradlet/perfi/internal/storage"
 )
 
-// Runner orchestrates the full sync -> calc -> push pipeline.
+// Runner orchestrates the full pull -> calc -> push pipeline.
 type Runner struct {
 	SheetsClient sheets.Client
 	Store        storage.Store
@@ -25,13 +25,22 @@ type RunParams struct {
 	Asset         string
 	Method        string
 	DryRun        bool
+	Fresh         bool
 }
 
-// Run executes the complete pipeline: sync from sheet, calculate cost basis,
-// and push results back to the sheet.
+// Run executes the complete pipeline: pull from sheet, calculate cost basis,
+// push local transactions and results back to the sheet.
 func (r *Runner) Run(ctx context.Context, p RunParams) error {
-	// Step 1: Sync
-	fmt.Fprintf(r.Out, "Syncing %s transactions from sheet...\n", p.Asset)
+	// Step 1: Pull transactions from the sheet.
+	if p.Fresh {
+		deleted, err := r.Store.DeleteSheetTransactions(ctx, p.Asset)
+		if err != nil {
+			return fmt.Errorf("deleting existing transactions: %w", err)
+		}
+		fmt.Fprintf(r.Out, "Cleared %d existing %s transactions from local database.\n", deleted, p.Asset)
+	}
+
+	fmt.Fprintf(r.Out, "Pulling %s transactions from sheet...\n", p.Asset)
 	rows, err := r.SheetsClient.ReadRange(ctx, p.SpreadsheetID, p.ReadRange)
 	if err != nil {
 		return fmt.Errorf("reading sheet: %w", err)
@@ -45,7 +54,7 @@ func (r *Runner) Run(ctx context.Context, p RunParams) error {
 	if err := r.Store.UpsertTransactions(ctx, p.Asset, txns); err != nil {
 		return fmt.Errorf("upserting transactions: %w", err)
 	}
-	fmt.Fprintf(r.Out, "Synced %d transactions.\n", len(txns))
+	fmt.Fprintf(r.Out, "Pulled %d transactions.\n", len(txns))
 
 	// Step 2: Calculate
 	calculator, err := engine.NewCalculator(p.Method)
@@ -70,7 +79,33 @@ func (r *Runner) Run(ctx context.Context, p RunParams) error {
 	}
 	fmt.Fprintf(r.Out, "Calculated %d sale summaries.\n", len(result.SaleSummaries))
 
-	// Step 3: Push
+	// Step 3: Push — append local transactions, then write results.
+	localTxns, err := r.Store.GetLocalTransactions(ctx, p.Asset)
+	if err != nil {
+		return fmt.Errorf("getting local transactions: %w", err)
+	}
+
+	if len(localTxns) > 0 {
+		if p.DryRun {
+			fmt.Fprintf(r.Out, "Dry run — would append %d local transactions to sheet.\n", len(localTxns))
+		} else {
+			appendRows := sheets.FormatTransactionsForSheet(localTxns)
+			if err := r.SheetsClient.AppendRange(ctx, p.SpreadsheetID, p.ReadRange, appendRows); err != nil {
+				return fmt.Errorf("appending local transactions to sheet: %w", err)
+			}
+
+			ids := make([]int64, len(localTxns))
+			for i, t := range localTxns {
+				ids[i] = t.ID
+			}
+			if err := r.Store.MarkTransactionsSynced(ctx, ids); err != nil {
+				return fmt.Errorf("marking transactions as synced: %w", err)
+			}
+
+			fmt.Fprintf(r.Out, "Appended %d local transactions to sheet.\n", len(localTxns))
+		}
+	}
+
 	if len(result.SaleSummaries) == 0 {
 		fmt.Fprintf(r.Out, "No sales found — nothing to push.\n")
 		return nil

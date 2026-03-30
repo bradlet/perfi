@@ -14,10 +14,10 @@ import (
 
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Combined workflow: sync, calc, and push in one step",
+	Short: "Combined workflow: pull, calc, and push in one step",
 	Long: `Executes the full pipeline: pulls transaction data from Google Sheet,
-runs cost basis calculation, and writes results back to the sheet.
-Equivalent to running sync, calc, and push sequentially.`,
+runs cost basis calculation, and writes local transactions and results
+back to the sheet. Equivalent to running pull, calc, and push sequentially.`,
 	RunE: runRun,
 }
 
@@ -28,6 +28,7 @@ func init() {
 	runCmd.Flags().String("method", "", "Cost basis method: fifo, average (overrides config)")
 	runCmd.Flags().String("db", "", "SQLite database path (overrides config)")
 	runCmd.Flags().Bool("dry-run", false, "Print output without writing to sheet")
+	runCmd.Flags().Bool("fresh", false, "Delete all sheet-origin transactions for the asset before pulling")
 
 	rootCmd.AddCommand(runCmd)
 }
@@ -76,6 +77,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	fresh, _ := cmd.Flags().GetBool("fresh")
 
 	client, err := sheets.NewGoogleSheetsClient(ctx)
 	if err != nil {
@@ -105,5 +107,6 @@ func runRun(cmd *cobra.Command, args []string) error {
 		Asset:         asset,
 		Method:        method,
 		DryRun:        dryRun,
+		Fresh:         fresh,
 	})
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -50,7 +51,7 @@ func (c *Config) AssetOrDefault(asset string) string {
 
 // GetAssetConfig returns the sheet config for a given asset, or an error if not found.
 func (c *Config) GetAssetConfig(asset string) (AssetConfig, error) {
-	ac, ok := c.Assets[asset]
+	ac, ok := c.Assets[strings.ToLower(asset)]
 	if !ok {
 		return AssetConfig{}, fmt.Errorf("no configuration found for asset %q", asset)
 	}

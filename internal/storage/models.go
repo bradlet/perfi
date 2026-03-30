@@ -17,6 +17,7 @@ type transactionRow struct {
 	PricePerUnit string
 	TotalValue   string
 	SyncedAt     string
+	Origin       string // "sheet" or "local"
 }
 
 func (r transactionRow) toTransaction() (engine.Transaction, error) {

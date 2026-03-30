@@ -10,9 +10,9 @@ In the future, this CLI could help in more general personal finance tracking and
 
 `perfi-cli` replaces manual spreadsheet-based cost basis tracking with a single CLI that:
 
-1. **Syncs** transaction data from a Google Sheet into a local SQLite database
+1. **Pulls** transaction data from a Google Sheet into a local SQLite database
 2. **Calculates** cost basis using FIFO or average cost methods
-3. **Pushes** formatted results (gain/loss, holding period) back to the sheet
+3. **Pushes** locally-recorded transactions and formatted results (gain/loss, holding period) back to the sheet
 
 It's designed for personal tax reporting on crypto and other asset transactions.
 
@@ -45,26 +45,43 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud services enable sheets.googleapis.com
 ```
 
-You can verify it's enabled:
+### 3. Create a service account and download a key
+
+`perfi` authenticates as a service account. Using `gcloud` ADC with user credentials does not work for the Sheets API due to OAuth scope restrictions.
 
 ```bash
-gcloud services list --enabled | grep sheets
+# Create the service account
+gcloud iam service-accounts create perfi-sheets \
+  --display-name="perfi Sheets access"
+
+# Download a JSON key
+gcloud iam service-accounts keys create ~/perfi-sa-key.json \
+  --iam-account=perfi-sheets@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-### 3. Set up Application Default Credentials
+No IAM roles are needed — Sheets access is controlled by sharing, not IAM.
 
-Authenticate with the Sheets API scope so `perfi` can read and write your spreadsheets:
+### 4. Share your spreadsheet with the service account
+
+Open your Google Sheet, click **Share**, and add the service account email as an **Editor**:
+
+```
+perfi-sheets@YOUR_PROJECT_ID.iam.gserviceaccount.com
+```
+
+### 5. Configure credentials
+
+Point the CLI at the key file by setting the `GOOGLE_APPLICATION_CREDENTIALS` environment variable:
 
 ```bash
-gcloud auth application-default login \
-  --scopes=https://www.googleapis.com/auth/spreadsheets
+export GOOGLE_APPLICATION_CREDENTIALS=~/perfi-sa-key.json
 ```
 
-This stores credentials at `~/.config/gcloud/application_default_credentials.json`. The CLI uses these automatically — no service account keys or OAuth client IDs needed.
+Add this to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) to make it permanent.
 
-### 4. Verify access
+### 6. Note your Sheet ID
 
-Open your target Google Sheet in a browser. Note the **Sheet ID** from the URL:
+Open your target Google Sheet in a browser and copy the **Sheet ID** from the URL:
 
 ```
 https://docs.google.com/spreadsheets/d/SHEET_ID_HERE/edit
@@ -77,9 +94,9 @@ You'll need this for the configuration file.
 ### From source
 
 ```bash
-git clone https://github.com/bradlet/perfci-cli.git
+git clone https://github.com/bradlet/perfi-cli.git
 cd perfi-cli
-go build -o perfi-cli .
+go build -o perfi .
 ```
 
 Optionally move the binary to your PATH:
@@ -132,29 +149,87 @@ Your Google Sheet should have these columns in order:
 | Column | Content | Example |
 |--------|---------|---------|
 | A | Source (exchange name) | `Coinbase` |
-| B | Date (Excel serial number) | `45292` (= 2024-01-01) |
+| B | Date (Excel serial number or `MM/DD/YYYY`) | `45292` (= 2024-01-01) or `01/01/2024` |
 | C | Quantity (positive = buy, negative = sell) | `12.15` or `-3.5` |
 | D | Price per unit | `82.25` |
 | E | Transaction total (USD) | `1000.00` |
 
 Header rows are automatically detected and skipped.
 
-## Usage
+### Output format
 
-### Sync transactions from Google Sheet
+When you run `perfi push`, the results are written back to your Google Sheet as a table with these columns:
 
-```bash
-# Sync default asset
-perfi sync
+| Column | Content | Example |
+|--------|---------|---------|
+| A | Date of the sale | `06/15/2024` |
+| B | Quantity sold | `5.50000000` |
+| C | Total proceeds (USD) | `550.00` |
+| D | Total cost basis (USD) | `400.00` |
+| E | Gain/Loss (USD) | `150.00` |
+| F | Holding period | `Long-term` or `Short-term` |
 
-# Sync a specific asset
-perfi sync --asset ETH
+**Where it gets written:** The `write_range` in your config specifies the starting cell. For example, `"Solana Cost Basis 2024!K1"` writes the header row to column K, and data rows below it. The output is written with a header row, followed by one row per sell transaction.
 
-# Override the sheet range
-perfi sync --range "My Sheet!A2:E500"
+**Per-asset configuration:** Each asset has its own `write_range` in your config, since you may want results on different sheets or columns:
+
+```yaml
+assets:
+  SOL:
+    write_range: "Solana Cost Basis 2024!K1"   # Results for SOL here
+  ETH:
+    write_range: "ETH Cost Basis 2024!K1"       # Results for ETH here
 ```
 
-### Calculate cost basis
+**Override the write location:** Use the `--range` flag to write to a different location:
+
+```bash
+perfi push --range "Results!A1"                        # Override write location
+perfi run --asset SOL --write-range "Summary!A1"       # Override for the full pipeline
+```
+
+## Usage
+
+### Global flags
+
+These flags are available on all commands:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--config` | Config file path | `$HOME/.perfi.yaml` |
+| `--asset` | Asset type (e.g., SOL, ETH) | From config `default_asset` |
+| `--verbose` | Enable verbose output | `false` |
+
+### `perfi pull`
+
+Reads transaction data from the configured Google Sheet range and upserts it into the local SQLite database. Existing transactions with matching (asset, source, date, quantity) keys are updated rather than duplicated.
+
+```bash
+# Pull default asset
+perfi pull
+
+# Pull a specific asset
+perfi pull --asset ETH
+
+# Override the sheet range
+perfi pull --range "My Sheet!A2:E500"
+
+# Reset local database to match the sheet exactly
+perfi pull --fresh
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--sheet-id` | Google Sheet ID | From config |
+| `--range` | Sheet range to read | From config (`read_range`) |
+| `--db` | SQLite database path | From config |
+| `--fresh` | Delete all sheet-origin transactions for the asset before pulling | `false` |
+
+By default, `pull` upserts — it updates existing rows and adds new ones, but does not remove transactions that were deleted from the sheet. Use `--fresh` to clear and re-import from the sheet. Unsynced local transactions (from `perfi sell`) are preserved.
+
+### `perfi calc`
+
+Loads transactions from the local SQLite database and runs cost basis calculation. Results are saved back to the database for later retrieval or pushing to a sheet.
 
 ```bash
 # Calculate using the configured method (default: FIFO)
@@ -167,22 +242,66 @@ perfi calc --method average
 perfi calc --verbose
 ```
 
-### Push results to Google Sheet
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--method` | Cost basis method: `fifo`, `average` | From config |
+| `--db` | SQLite database path | From config |
+
+### `perfi push`
+
+Appends any locally-recorded transactions (from `perfi sell`) to the transaction log in the Google Sheet, then writes the latest cost basis results to the configured output range.
 
 ```bash
 # Preview what would be written
 perfi push --dry-run
 
-# Write results to the configured range
+# Write local transactions and results to the configured ranges
 perfi push
 
-# Override the target range
+# Override the output target range
 perfi push --range "Results!A1"
 ```
 
-### Combined workflow
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--sheet-id` | Google Sheet ID | From config |
+| `--range` | Target range for output | From config (`write_range`) |
+| `--db` | SQLite database path | From config |
+| `--dry-run` | Print output without writing to sheet | `false` |
 
-Run sync, calc, and push in a single command:
+### `perfi sell`
+
+Records a sell transaction in the local SQLite database and immediately runs cost basis calculation. The transaction will be appended to the Google Sheet transaction log on the next `perfi push`.
+
+```bash
+# Sell 5 SOL at $150/unit (total defaults to quantity × price)
+perfi sell --quantity 5 --price 150
+
+# Specify total proceeds explicitly
+perfi sell --quantity 5 --total 750
+
+# Specify asset, date, and source
+perfi sell --asset ETH --quantity 2 --price 3000 --date 2024-06-15 --source Coinbase
+
+# Override cost basis method
+perfi sell --quantity 5 --price 150 --method average
+```
+
+Either `--price` or `--total` must be provided.
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--quantity` | Quantity sold (required, positive number) | — |
+| `--price` | Price per unit at sale time | — |
+| `--total` | Total sale proceeds (optional; defaults to `quantity × price`) | — |
+| `--source` | Source label for the transaction | `manual` |
+| `--date` | Sale date in `YYYY-MM-DD` format | Today |
+| `--method` | Cost basis method: `fifo`, `average` | From config |
+| `--db` | SQLite database path | From config |
+
+### `perfi run`
+
+Executes the full pipeline: pulls transaction data from Google Sheet, runs cost basis calculation, and writes local transactions and results back to the sheet. Equivalent to running `pull`, `calc`, and `push` sequentially.
 
 ```bash
 # Full pipeline
@@ -193,15 +312,20 @@ perfi run --dry-run
 
 # Full pipeline for a specific asset and method
 perfi run --asset ETH --method average
-```
 
-### Global flags
+# Full pipeline with a fresh pull from the sheet
+perfi run --fresh
+```
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--config` | Config file path | `$HOME/.perfi.yaml` |
-| `--asset` | Asset type (e.g., SOL, ETH) | From config `default_asset` |
-| `--verbose` | Enable verbose output | `false` |
+| `--sheet-id` | Google Sheet ID | From config |
+| `--read-range` | Sheet range to read | From config (`read_range`) |
+| `--write-range` | Target range for output | From config (`write_range`) |
+| `--method` | Cost basis method: `fifo`, `average` | From config |
+| `--db` | SQLite database path | From config |
+| `--dry-run` | Print output without writing to sheet | `false` |
+| `--fresh` | Delete all sheet-origin transactions for the asset before pulling | `false` |
 
 ## Supported Cost Basis Methods
 
@@ -230,10 +354,11 @@ perfi/
 ├── main.go                      # Entry point
 ├── cmd/                         # Cobra CLI commands
 │   ├── root.go                  # Root command + Viper config
-│   ├── sync.go                  # Pull sheet → SQLite
+│   ├── pull.go                  # Pull sheet → SQLite
 │   ├── calc.go                  # Run cost basis calculation
-│   ├── push.go                  # Write results → sheet
-│   └── run.go                   # Combined workflow
+│   ├── push.go                  # Write local txns + results → sheet
+│   ├── run.go                   # Combined workflow
+│   └── sell.go                  # Record a sell transaction locally
 ├── internal/
 │   ├── config/                  # Viper config struct
 │   ├── engine/                  # Cost basis calculators (FIFO, average)
