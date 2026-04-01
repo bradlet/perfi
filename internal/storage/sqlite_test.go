@@ -302,57 +302,48 @@ func TestSQLiteStore_UpsertOverwritesLocalOrigin(t *testing.T) {
 	assert.Empty(t, local, "upsert from sheet should overwrite local origin")
 }
 
-func TestSQLiteStore_DeleteSheetTransactions(t *testing.T) {
+func TestSQLiteStore_Reset(t *testing.T) {
 	store := setupStore(t)
 	ctx := context.Background()
 
-	// Insert sheet-origin transactions.
-	sheetTxns := sampleTransactions()
-	require.NoError(t, store.UpsertTransactions(ctx, "SOL", sheetTxns))
+	// Populate all three tables.
+	txns := sampleTransactions()
+	require.NoError(t, store.UpsertTransactions(ctx, "SOL", txns))
+	got, err := store.GetTransactions(ctx, "SOL")
+	require.NoError(t, err)
 
-	// Insert a local transaction.
-	localTxn := engine.Transaction{
-		Source: "manual", Date: time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC),
-		Quantity: d("-5"), PricePerUnit: d("120"), TotalValue: d("600"),
+	result := &engine.CostBasisResult{
+		Asset: "SOL", Method: "fifo",
+		Consumptions: []engine.LotConsumption{
+			{SaleTransactionID: got[1].ID, LotTransactionID: got[0].ID, QuantityUsed: d("3.5"), CostBasis: d("287.875")},
+		},
+		SaleSummaries: []engine.SaleSummary{{TransactionID: got[1].ID}},
 	}
-	_, err := store.InsertLocalTransaction(ctx, "SOL", localTxn)
-	require.NoError(t, err)
+	require.NoError(t, store.SaveResults(ctx, result))
 
-	// Delete sheet transactions.
-	deleted, err := store.DeleteSheetTransactions(ctx, "SOL")
-	require.NoError(t, err)
-	assert.Equal(t, int64(3), deleted)
+	// Reset wipes everything.
+	require.NoError(t, store.Reset(ctx))
 
-	// Only the local transaction should remain.
-	all, err := store.GetTransactions(ctx, "SOL")
+	txnsAfter, err := store.GetTransactions(ctx, "SOL")
 	require.NoError(t, err)
-	require.Len(t, all, 1)
-	assert.True(t, d("-5").Equal(all[0].Quantity))
+	assert.Empty(t, txnsAfter, "transactions should be cleared")
+
+	resultsAfter, err := store.GetResults(ctx, "SOL", "fifo")
+	require.NoError(t, err)
+	assert.Empty(t, resultsAfter.Consumptions, "lot_consumptions should be cleared")
+
+	var calcRunCount int
+	require.NoError(t, store.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM calc_runs").Scan(&calcRunCount))
+	assert.Zero(t, calcRunCount, "calc_runs should be cleared")
 }
 
-func TestSQLiteStore_DeleteSheetTransactions_OnlyAffectsAsset(t *testing.T) {
+func TestSQLiteStore_Reset_IsIdempotent(t *testing.T) {
 	store := setupStore(t)
 	ctx := context.Background()
 
-	solTxns := []engine.Transaction{{
-		Source: "Coinbase", Date: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		Quantity: d("10"), PricePerUnit: d("100"), TotalValue: d("1000"),
-	}}
-	ethTxns := []engine.Transaction{{
-		Source: "Coinbase", Date: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		Quantity: d("5"), PricePerUnit: d("3000"), TotalValue: d("15000"),
-	}}
-	require.NoError(t, store.UpsertTransactions(ctx, "SOL", solTxns))
-	require.NoError(t, store.UpsertTransactions(ctx, "ETH", ethTxns))
-
-	deleted, err := store.DeleteSheetTransactions(ctx, "SOL")
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), deleted)
-
-	// ETH should be untouched.
-	eth, err := store.GetTransactions(ctx, "ETH")
-	require.NoError(t, err)
-	assert.Len(t, eth, 1)
+	// Reset on an empty database should not error.
+	require.NoError(t, store.Reset(ctx))
+	require.NoError(t, store.Reset(ctx))
 }
 
 func TestSQLiteStore_SaveResults_ReplacesOld(t *testing.T) {

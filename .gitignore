@@ -27,5 +27,6 @@ go.work.sum
 
 # App
 perfi.db
+perfi.db-*
 *.db
 .perfi.yaml

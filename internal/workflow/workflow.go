@@ -33,11 +33,10 @@ type RunParams struct {
 func (r *Runner) Run(ctx context.Context, p RunParams) error {
 	// Step 1: Pull transactions from the sheet.
 	if p.Fresh {
-		deleted, err := r.Store.DeleteSheetTransactions(ctx, p.Asset)
-		if err != nil {
-			return fmt.Errorf("deleting existing transactions: %w", err)
+		if err := r.Store.Reset(ctx); err != nil {
+			return fmt.Errorf("resetting database: %w", err)
 		}
-		fmt.Fprintf(r.Out, "Cleared %d existing %s transactions from local database.\n", deleted, p.Asset)
+		fmt.Fprintf(r.Out, "Database reset.\n")
 	}
 
 	fmt.Fprintf(r.Out, "Pulling %s transactions from sheet...\n", p.Asset)

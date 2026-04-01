@@ -80,11 +80,10 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	fresh, _ := cmd.Flags().GetBool("fresh")
 	if fresh {
-		deleted, err := store.DeleteSheetTransactions(ctx, asset)
-		if err != nil {
-			return fmt.Errorf("deleting existing transactions: %w", err)
+		if err := store.Reset(ctx); err != nil {
+			return fmt.Errorf("resetting database: %w", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Cleared %d existing %s transactions from local database.\n", deleted, asset)
+		fmt.Fprintf(cmd.OutOrStdout(), "Database reset.\n")
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Pulling %s transactions from sheet...\n", asset)

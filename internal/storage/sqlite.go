@@ -56,7 +56,7 @@ type Store interface {
 	InsertLocalTransaction(ctx context.Context, asset string, txn engine.Transaction) (int64, error)
 	GetTransactions(ctx context.Context, asset string) ([]engine.Transaction, error)
 	GetLocalTransactions(ctx context.Context, asset string) ([]engine.Transaction, error)
-	DeleteSheetTransactions(ctx context.Context, asset string) (int64, error)
+	Reset(ctx context.Context) error
 	MarkTransactionsSynced(ctx context.Context, ids []int64) error
 	SaveResults(ctx context.Context, result *engine.CostBasisResult) error
 	GetResults(ctx context.Context, asset string, method string) (*engine.CostBasisResult, error)
@@ -205,13 +205,20 @@ func (s *SQLiteStore) GetLocalTransactions(ctx context.Context, asset string) ([
 	return txns, rows.Err()
 }
 
-func (s *SQLiteStore) DeleteSheetTransactions(ctx context.Context, asset string) (int64, error) {
-	result, err := s.db.ExecContext(ctx,
-		"DELETE FROM transactions WHERE asset = ? AND origin = 'sheet'", asset)
+func (s *SQLiteStore) Reset(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("deleting sheet transactions: %w", err)
+		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	return result.RowsAffected()
+	defer tx.Rollback()
+
+	for _, table := range []string{"lot_consumptions", "calc_runs", "transactions"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return fmt.Errorf("truncating %s: %w", table, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) MarkTransactionsSynced(ctx context.Context, ids []int64) error {

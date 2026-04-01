@@ -192,6 +192,50 @@ func TestRunner_Run_AppendsLocalTransactions(t *testing.T) {
 	assert.Empty(t, local, "local transactions should be marked as synced")
 }
 
+func TestRunner_Run_Fresh(t *testing.T) {
+	store, err := storage.NewSQLiteStore(":memory:")
+	require.NoError(t, err)
+	require.NoError(t, store.Init(context.Background()))
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Pre-populate the database with stale data from a prior run.
+	staleTxns := []engine.Transaction{{
+		Source: "Coinbase", Date: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Asset: "SOL", Quantity: decimal.RequireFromString("50"), PricePerUnit: decimal.RequireFromString("10"), TotalValue: decimal.RequireFromString("500"),
+	}}
+	require.NoError(t, store.UpsertTransactions(ctx, "SOL", staleTxns))
+
+	mock := &mockSheetsClient{
+		readData: [][]interface{}{
+			{"Coinbase", 45292.0, 10.0, 100.0, 1000.0},
+			{"Coinbase", 45322.0, -5.0, 120.0, 600.0},
+		},
+	}
+
+	var buf bytes.Buffer
+	runner := &Runner{SheetsClient: mock, Store: store, Out: &buf}
+
+	err = runner.Run(ctx, RunParams{
+		SpreadsheetID: "test-sheet",
+		ReadRange:     "A:E",
+		WriteRange:    "J1",
+		Asset:         "SOL",
+		Method:        "fifo",
+		Fresh:         true,
+	})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "Database reset")
+
+	// Only the 2 freshly pulled transactions should exist (stale 50-SOL buy is gone).
+	txns, err := store.GetTransactions(ctx, "SOL")
+	require.NoError(t, err)
+	assert.Len(t, txns, 2, "only freshly pulled transactions should remain after reset")
+}
+
 func TestRunner_Run_ReadError(t *testing.T) {
 	store, err := storage.NewSQLiteStore(":memory:")
 	require.NoError(t, err)
