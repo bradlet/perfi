@@ -1,4 +1,4 @@
-# perfi-cli
+# perfi
 
 A Go CLI-based personal finance tracking and management tool. Currently solely used for tracking cost basis of financial assets using Google Sheets as the data source. Supports FIFO and average cost methods, multiple asset types, and persists data locally in SQLite.
 
@@ -8,7 +8,7 @@ In the future, this CLI could help in more general personal finance tracking and
 
 ## Overview
 
-`perfi-cli` replaces manual spreadsheet-based cost basis tracking with a single CLI that:
+`perfi` replaces manual spreadsheet-based cost basis tracking with a single CLI that:
 
 1. **Pulls** transaction data from a Google Sheet into a local SQLite database
 2. **Calculates** cost basis using FIFO or average cost methods
@@ -94,8 +94,8 @@ You'll need this for the configuration file.
 ### From source
 
 ```bash
-git clone https://github.com/bradlet/perfi-cli.git
-cd perfi-cli
+git clone https://github.com/bradlet/perfi.git
+cd perfi
 go build -o perfi .
 ```
 
@@ -108,7 +108,7 @@ mv perfi ~/go/bin/
 ### Using `go install`
 
 ```bash
-go install github.com/bradlet/perfi-cli@latest
+go install github.com/bradlet/perfi@latest
 ```
 
 ## Configuration

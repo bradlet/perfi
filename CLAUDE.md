@@ -1,4 +1,4 @@
-# perfi-cli
+# perfi
 
 See [README.md](README.md) for project overview, architecture, and CLI usage.
 See [docs/data-model.md](docs/data-model.md) for the SQLite schema and cost basis pipeline.
