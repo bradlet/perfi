@@ -79,7 +79,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	fresh, _ := cmd.Flags().GetBool("fresh")
 
-	client, err := sheets.NewGoogleSheetsClient(ctx)
+	client, err := sheets.NewGoogleSheetsClient(ctx, cfg.ServiceAccount)
 	if err != nil {
 		return fmt.Errorf("creating sheets client: %w", err)
 	}

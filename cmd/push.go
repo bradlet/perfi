@@ -136,7 +136,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	client, err := sheets.NewGoogleSheetsClient(ctx)
+	client, err := sheets.NewGoogleSheetsClient(ctx, cfg.ServiceAccount)
 	if err != nil {
 		return fmt.Errorf("creating sheets client: %w", err)
 	}

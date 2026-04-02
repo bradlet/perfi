@@ -73,7 +73,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("initializing database: %w", err)
 	}
 
-	client, err := sheets.NewGoogleSheetsClient(ctx)
+	client, err := sheets.NewGoogleSheetsClient(ctx, cfg.ServiceAccount)
 	if err != nil {
 		return fmt.Errorf("creating sheets client: %w", err)
 	}

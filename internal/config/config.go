@@ -15,11 +15,13 @@ type AssetConfig struct {
 
 // Config holds all application configuration.
 type Config struct {
-	DefaultAsset string                 `mapstructure:"default_asset"`
-	SheetID      string                 `mapstructure:"sheet_id"`
-	Assets       map[string]AssetConfig `mapstructure:"assets"`
-	Method       string                 `mapstructure:"method"`
-	DBPath       string                 `mapstructure:"db_path"`
+	GCPProject     string                 `mapstructure:"gcp_project"`
+	ServiceAccount string                 `mapstructure:"service_account"`
+	DefaultAsset   string                 `mapstructure:"default_asset"`
+	SheetID        string                 `mapstructure:"sheet_id"`
+	Assets         map[string]AssetConfig `mapstructure:"assets"`
+	Method         string                 `mapstructure:"method"`
+	DBPath         string                 `mapstructure:"db_path"`
 }
 
 // Load reads the Viper-bound configuration into a Config struct,

@@ -2,10 +2,12 @@ package sheets
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 )
 
 // mockClient implements the Client interface for testing command logic
@@ -86,3 +88,41 @@ func TestMockClient_WriteRange_Error(t *testing.T) {
 
 // Verify mockClient satisfies the Client interface at compile time.
 var _ Client = (*mockClient)(nil)
+
+// --- NewGoogleSheetsClient tests ---
+
+func TestNewGoogleSheetsClient_EmptyServiceAccount(t *testing.T) {
+	_, err := NewGoogleSheetsClient(context.Background(), "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "perfi init")
+}
+
+func TestNewGoogleSheetsClient_UsesImpersonation(t *testing.T) {
+	original := newTokenSource
+	t.Cleanup(func() { newTokenSource = original })
+
+	var capturedEmail string
+	newTokenSource = func(_ context.Context, sa string) (oauth2.TokenSource, error) {
+		capturedEmail = sa
+		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "fake-token"}), nil
+	}
+
+	client, err := NewGoogleSheetsClient(context.Background(), "perfi-sheets@my-project.iam.gserviceaccount.com")
+	require.NoError(t, err)
+	assert.NotNil(t, client)
+	assert.Equal(t, "perfi-sheets@my-project.iam.gserviceaccount.com", capturedEmail)
+}
+
+func TestNewGoogleSheetsClient_ImpersonationError(t *testing.T) {
+	original := newTokenSource
+	t.Cleanup(func() { newTokenSource = original })
+
+	newTokenSource = func(_ context.Context, sa string) (oauth2.TokenSource, error) {
+		return nil, fmt.Errorf("impersonation failed: permission denied")
+	}
+
+	_, err := NewGoogleSheetsClient(context.Background(), "perfi-sheets@my-project.iam.gserviceaccount.com")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "impersonation failed")
+	assert.Contains(t, err.Error(), "perfi-sheets@my-project.iam.gserviceaccount.com")
+}

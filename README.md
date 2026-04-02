@@ -24,62 +24,43 @@ It's designed for personal tax reporting on crypto and other asset transactions.
 
 ## GCP Setup
 
-### 1. Create or select a GCP project
-
-If you don't have a GCP project, create one:
+Run the interactive setup command:
 
 ```bash
-gcloud projects create my-perfi --name="Cost Basis Tracker"
-gcloud config set project my-perfi
+perfi init
 ```
 
-Or select an existing project:
+This will:
+- Create or select a GCP project
+- Create or select a service account
+- Enable the Google Sheets API
+- Grant your account permission to impersonate the service account
+
+You can also provide an existing project and/or service account via flags:
 
 ```bash
-gcloud config set project YOUR_PROJECT_ID
+# Use an existing project, create a new service account
+perfi init --project my-existing-project
+
+# Use both an existing project and service account
+perfi init --project my-project --service-account perfi-sheets@my-project.iam.gserviceaccount.com
 ```
 
-### 2. Enable the Google Sheets API
+### Share your spreadsheet with the service account
+
+After running `perfi init`, share your Google Sheet with the service account email printed at the end of setup. Open your sheet, click **Share**, and add the service account email as an **Editor**.
+
+### Authenticate
+
+If you haven't already, authenticate with Google Cloud:
 
 ```bash
-gcloud services enable sheets.googleapis.com
+gcloud auth application-default login
 ```
 
-### 3. Create a service account and download a key
+`perfi` authenticates by impersonating the service account using your local credentials — no service account key files are needed.
 
-`perfi` authenticates as a service account. Using `gcloud` ADC with user credentials does not work for the Sheets API due to OAuth scope restrictions.
-
-```bash
-# Create the service account
-gcloud iam service-accounts create perfi-sheets \
-  --display-name="perfi Sheets access"
-
-# Download a JSON key
-gcloud iam service-accounts keys create ~/perfi-sa-key.json \
-  --iam-account=perfi-sheets@YOUR_PROJECT_ID.iam.gserviceaccount.com
-```
-
-No IAM roles are needed — Sheets access is controlled by sharing, not IAM.
-
-### 4. Share your spreadsheet with the service account
-
-Open your Google Sheet, click **Share**, and add the service account email as an **Editor**:
-
-```
-perfi-sheets@YOUR_PROJECT_ID.iam.gserviceaccount.com
-```
-
-### 5. Configure credentials
-
-Point the CLI at the key file by setting the `GOOGLE_APPLICATION_CREDENTIALS` environment variable:
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=~/perfi-sa-key.json
-```
-
-Add this to your shell profile (`~/.zshrc`, `~/.bashrc`, etc.) to make it permanent.
-
-### 6. Note your Sheet ID
+### Note your Sheet ID
 
 Open your target Google Sheet in a browser and copy the **Sheet ID** from the URL:
 
@@ -354,6 +335,7 @@ perfi/
 ├── main.go                      # Entry point
 ├── cmd/                         # Cobra CLI commands
 │   ├── root.go                  # Root command + Viper config
+│   ├── init.go                  # GCP project + service account setup
 │   ├── pull.go                  # Pull sheet → SQLite
 │   ├── calc.go                  # Run cost basis calculation
 │   ├── push.go                  # Write local txns + results → sheet
